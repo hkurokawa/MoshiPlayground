@@ -1,12 +1,12 @@
 package com.hkurokawa.moshiplayground;
 
+import com.squareup.moshi.JsonReader;
 import okio.Buffer;
 import okio.BufferedSource;
 import org.junit.Test;
 import com.squareup.moshi.Moshi;
 
-import java.util.Calendar;
-import java.util.Date;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -37,6 +37,60 @@ public class MoshiPlayground {
         final String json = moshi.adapter(Message.class).toJson(msg);
         assertThat(json).isEqualTo("{\"createdAt\":\"2015-05-09T23:52:00.000+09:00\",\"msg\":\"Test message\"}");
         assertThat(moshi.adapter(Message.class).fromJson(json)).isEqualTo(msg);
+    }
+
+    @Test
+    public void testPath() throws Exception {
+        final String json = "{\"users\": [{\"name\":\"Jake Wharton\",\"age\":31},{\"first\":\"Jesse\", \"last\":\"Williams\"}]}";
+        final JsonReader reader = new JsonReader(newBuffer(json));
+
+        final List<User> users = new ArrayList<>();
+        reader.beginObject();
+        while (reader.hasNext()) {
+            if (reader.nextName().equals("users")) {
+                reader.beginArray();
+                while (reader.hasNext()) {
+                    final User user = new User();
+                    reader.beginObject();
+                    String first = "";
+                    String last = "";
+                    while (reader.hasNext()) {
+                        switch (reader.nextName()) {
+                            case "name":
+                                user.setName(reader.nextString());
+                                break;
+                            case "age":
+                                user.setAge(reader.nextInt());
+                                break;
+                            case "first":
+                                first = reader.nextString();
+                                break;
+                            case "last":
+                                last = reader.nextString();
+                                break;
+                        }
+                    }
+                    reader.endObject();
+                    if (!first.isEmpty() && !last.isEmpty()) {
+                        user.setName(first + " " + last);
+                    }
+                    users.add(user);
+                }
+                reader.endArray();
+            }
+        }
+        reader.endObject();
+
+        Collections.sort(users, new Comparator<User>() {
+            @Override
+            public int compare(User o1, User o2) {
+                return o1.name.compareTo(o2.name);
+            }
+        });
+        assertThat(users.get(0).getName()).isEqualTo("Jake Wharton");
+        assertThat(users.get(0).getAge()).isEqualTo(31);
+        assertThat(users.get(1).getName()).isEqualTo("Jesse Williams");
+        assertThat(users.get(1).getAge()).isEqualTo(0);
     }
 
     private BufferedSource newBuffer(String input) {
