@@ -6,6 +6,7 @@ import okio.BufferedSource;
 import org.junit.Test;
 import com.squareup.moshi.Moshi;
 
+import java.io.IOException;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,8 +41,8 @@ public class MoshiPlayground {
     }
 
     @Test
-    public void testPath() throws Exception {
-        final String json = "{\"users\": [{\"name\":\"Jake Wharton\",\"age\":31},{\"first\":\"Jesse\", \"last\":\"Williams\"}]}";
+    public void testWalkThrough() throws Exception {
+        final String json = "{\"users\": [{\"name\":\"Jake Wharton\",\"age\":\"31\"},{\"first\":\"Jesse\", \"last\":\"Williams\"}]}";
         final JsonReader reader = new JsonReader(newBuffer(json));
 
         final List<User> users = new ArrayList<>();
@@ -91,6 +92,67 @@ public class MoshiPlayground {
         assertThat(users.get(0).getAge()).isEqualTo(31);
         assertThat(users.get(1).getName()).isEqualTo("Jesse Williams");
         assertThat(users.get(1).getAge()).isEqualTo(0);
+    }
+
+    @Test
+    public void testPath() throws Exception {
+        final String json = "{\"users\": [{\"name\":\"Jake Wharton\",\"age\":31}]}";
+        final JsonReader reader = new JsonReader(newBuffer(json));
+
+        assertThat(reader.getPath()).isEqualTo("$");
+        reader.beginObject();
+        assertThat(reader.getPath()).isEqualTo("$.");
+        while (reader.hasNext()) {
+            assertThat(reader.nextName()).isEqualTo("users");
+            assertThat(reader.getPath()).isEqualTo("$.users");
+            reader.beginArray();
+            assertThat(reader.getPath()).isEqualTo("$.users[0]");
+            while (reader.hasNext()) {
+                reader.beginObject();
+                assertThat(reader.getPath()).isEqualTo("$.users[0].");
+                while (reader.hasNext()) {
+                    final String name = reader.nextName();
+                    switch (name) {
+                        case "name":
+                            assertThat(reader.getPath()).isEqualTo("$.users[0].name");
+                            reader.skipValue();
+                            assertThat(reader.getPath()).isEqualTo("$.users[0].null");
+                            break;
+                        case "age":
+                            assertThat(reader.getPath()).isEqualTo("$.users[0].age");
+                            reader.nextInt();
+                            assertThat(reader.getPath()).isEqualTo("$.users[0].age");
+                            break;
+                    }
+                }
+                reader.endObject();
+            }
+            assertThat(reader.getPath()).isEqualTo("$.users[1]");
+            reader.endArray();
+            assertThat(reader.getPath()).isEqualTo("$.users");
+        }
+        reader.endObject();
+        assertThat(reader.getPath()).isEqualTo("$");
+    }
+
+    @Test
+    public void testLenient() throws IOException {
+        final String json = "{name:\"Jake Wharton\",age:\"31\", // Honestly, I am not sure how old he is.\n fval: NaN}{hoge: fuga}";
+        final JsonReader reader = new JsonReader(newBuffer(json));
+        reader.setLenient(true);
+        reader.beginObject();
+        while (reader.hasNext()) {
+            switch (reader.nextName()) {
+                case "fval":
+                    assertThat(reader.nextDouble()).isEqualTo(Double.NaN);
+                    break;
+                case "age":
+                    assertThat(reader.nextInt()).isEqualTo(31);
+                    break;
+                default:
+                    reader.skipValue();
+            }
+        }
     }
 
     private BufferedSource newBuffer(String input) {
